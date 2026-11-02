@@ -8,7 +8,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0b0f14">
 <title>Sürüş Asistanı</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -42,8 +41,6 @@
       <h2>Hava Durumu <small id="weather-place"></small></h2>
       <div id="weather-body"><p class="muted">Yükleniyor…</p></div>
     </article>
-
-    <div id="map-slot-prep"></div>
 
     <article class="card traffic-card" hidden>
       <h2>Trafik (5 km çevre) <button class="mini btn-refresh" type="button">Yenile</button></h2>
@@ -84,8 +81,6 @@
       <div class="muted">Gidilen mesafe</div>
     </div>
 
-    <div id="map-slot-drive"></div>
-
     <article class="card traffic-card" hidden>
       <h2>Trafik (5 km çevre) <button class="mini btn-refresh" type="button">Yenile</button></h2>
       <div class="traffic-body"><p class="muted">Yükleniyor…</p></div>
@@ -97,23 +92,7 @@
     </div>
   </section>
 
-  <!-- HARİTA: ekranlar arasında taşınan tek harita kartı -->
-  <article id="map-card" class="card map-card" hidden>
-    <h2>Harita <span id="map-info" class="map-info"></span></h2>
-    <div class="map-box">
-      <div id="map"></div>
-      <button id="btn-follow" class="map-follow" type="button" hidden>📍 Konumuma dön</button>
-    </div>
-    <div class="legend">
-      <span><i class="lg lg-closed"></i>Kapalı yol</span>
-      <span><i class="lg lg-heavy"></i>Ağır</span>
-      <span><i class="lg lg-mid"></i>Orta</span>
-      <span><i class="lg lg-light"></i>Hafif</span>
-    </div>
-    <p id="map-msg" class="muted" hidden></p>
-  </article>
 </main>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="app.js"></script>
 </body>
 </html>
