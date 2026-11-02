@@ -314,7 +314,7 @@ async function fetchIncidents(lat, lon) {
   (data.incidents || []).forEach((inc) => {
     const p = inc.properties || {};
     const dist = minDistanceToGeometry(lat, lon, inc.geometry);
-    if (dist <= RADIUS_M) items.push({ p, dist, geom: inc.geometry });
+    if (dist <= RADIUS_M) items.push({ p, dist });
   });
   items.sort((a, b) => {
     const ja = a.p.iconCategory === 6 ? 0 : 1, jb = b.p.iconCategory === 6 ? 0 : 1;
@@ -344,7 +344,6 @@ async function loadTraffic() {
   const [inc, flow] = await Promise.allSettled([fetchIncidents(lat, lon), fetchFlow(lat, lon)]);
   state.trafficBusy = false;
   renderTraffic(inc, flow);
-  drawTraffic(inc, lat, lon);
 }
 
 function renderTraffic(inc, flow) {
@@ -416,7 +415,6 @@ function setupTrafficCards() {
 /* ------------------------- Sürüş öncesi ekran ------------------------- */
 function enterPrep() {
   showScreen('screen-prep');
-  placeMap('map-slot-prep', 'prep');
   setupTrafficCards();
   loadWeather();
   loadTraffic();
@@ -458,7 +456,6 @@ function onPosition(p) {
 
   $('speed').textContent = String(Math.round(state.speedMs * 3.6));
   $('distance').textContent = (state.distanceM / 1000).toFixed(2);
-  updateMapPosition();
 }
 
 function onPositionError(err) {
@@ -485,9 +482,7 @@ function frame() {
     $('heading-deg').textContent = Math.round(deg) % 360 + '°';
     $('heading-name').textContent = name8(deg);
     $('heading-src').textContent = h.src;
-    setMapHeading(deg);
   } else {
-    setMapHeading(null);
     $('heading-card').textContent = '—';
     $('heading-deg').textContent = '—';
     $('heading-name').textContent = 'Hareket edince GPS yönü gösterilir';
@@ -525,7 +520,6 @@ function startDrive() {
   showScreen('screen-drive');
   setupTrafficCards();
   buildDial();
-  placeMap('map-slot-drive', 'drive');
 
   state.watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
     { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
@@ -551,7 +545,6 @@ function stopDrive() {
   lt.hidden = false;
 
   showScreen('screen-prep');
-  placeMap('map-slot-prep', 'prep');
   setupTrafficCards();
   loadWeather();
   loadTraffic();
@@ -579,197 +572,6 @@ function buildDial() {
   });
 }
 
-/* ------------------------------ Harita (Leaflet) ------------------------------ */
-// Altlık: CARTO Voyager / Dark (OpenStreetMap verisi, ücretsiz). Trafik akışı: TomTom raster katmanı.
-const mapState = {
-  m: null, ready: false, me: null, accCircle: null, arrowEl: null,
-  traffic: null, follow: true, mode: 'prep', lastHeading: undefined,
-  flowOk: 0, flowErr: 0,
-};
-
-function setMapMsg(text, isError) {
-  const e = $('map-msg');
-  if (!text) { e.hidden = true; e.textContent = ''; return; }
-  e.textContent = text;
-  e.className = isError ? 'error' : 'muted';
-  e.hidden = false;
-}
-
-function ensureMap() {
-  if (mapState.ready) return true;
-  if (typeof L === 'undefined') {
-    setMapMsg('Harita kütüphanesi yüklenemedi (internet bağlantısını kontrol edin).', true);
-    return false;
-  }
-  const { lat, lon } = state.pos;
-  const m = L.map('map', { zoomControl: true, tap: true }).setView([lat, lon], 14);
-
-  const attrib = '&copy; OpenStreetMap &copy; CARTO';
-  const light = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    { subdomains: 'abcd', maxZoom: 19, attribution: attrib });
-  const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    { subdomains: 'abcd', maxZoom: 19, attribution: attrib });
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  (prefersDark ? dark : light).addTo(m);
-
-  mapState.traffic = L.layerGroup().addTo(m);
-  const overlays = { 'Kapalı yol ve olaylar': mapState.traffic };
-
-  if (state.trafficKey) {
-    const flow = L.tileLayer(
-      'https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=' + encodeURIComponent(state.trafficKey),
-      { maxZoom: 19, opacity: 0.9, attribution: '&copy; TomTom' });
-    flow.on('tileload', () => { mapState.flowOk++; });
-    flow.on('tileerror', () => {
-      mapState.flowErr++;
-      if (mapState.flowOk === 0 && mapState.flowErr >= 3) {
-        setMapMsg('TomTom trafik akış katmanı yüklenemedi (anahtar veya günlük limit).', true);
-      }
-    });
-    flow.addTo(m);
-    overlays['Trafik akışı (TomTom)'] = flow;
-  }
-
-  L.control.layers({ 'Açık harita': light, 'Koyu harita': dark }, overlays, { collapsed: true, position: 'topright' }).addTo(m);
-  L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(m);
-
-  // Konum işareti (yön oku + doğruluk dairesi)
-  mapState.accCircle = L.circle([lat, lon], { radius: state.pos.acc || 20, weight: 1, color: '#1e88ff', fillColor: '#1e88ff', fillOpacity: 0.12, interactive: false }).addTo(m);
-  mapState.me = L.marker([lat, lon], {
-    icon: L.divIcon({ className: '', html: '<div class="me-wrap"><div class="me-arrow"></div><div class="me-dot"></div></div>', iconSize: [44, 44], iconAnchor: [22, 22] }),
-    zIndexOffset: 1000, interactive: false, keyboard: false,
-  }).addTo(m);
-  mapState.arrowEl = mapState.me.getElement().querySelector('.me-arrow');
-  mapState.meWrap = mapState.me.getElement().querySelector('.me-wrap');
-
-  // Kullanıcı haritayı kaydırırsa otomatik takibi durdur
-  m.on('dragstart', () => {
-    if (mapState.mode === 'drive') { mapState.follow = false; $('btn-follow').hidden = false; }
-  });
-
-  mapState.m = m;
-  mapState.ready = true;
-  return true;
-}
-
-function placeMap(slotId, mode) {
-  mapState.mode = mode;
-  const card = $('map-card');
-  $(slotId).append(card);
-  card.hidden = false;
-  if (!ensureMap()) return;
-
-  mapState.follow = true;
-  $('btn-follow').hidden = true;
-  if (!state.trafficKey) setMapMsg('Kapalı yol ve trafik katmanı için TomTom anahtarı gerekir. Konumunuz haritada canlı gösterilir.', false);
-  else if (mapState.flowErr < 3) setMapMsg('');
-
-  const m = mapState.m;
-  setTimeout(() => {
-    m.invalidateSize();
-    const ll = L.latLng(state.pos.lat, state.pos.lon);
-    if (mode === 'drive') m.setView(ll, 16);
-    else m.fitBounds(ll.toBounds(RADIUS_M * 2.2));
-    updateMapPosition(true);
-  }, 60);
-}
-
-function updateMapPosition(force) {
-  if (!mapState.ready || !state.pos) return;
-  const ll = L.latLng(state.pos.lat, state.pos.lon);
-  mapState.me.setLatLng(ll);
-  mapState.accCircle.setLatLng(ll);
-  mapState.accCircle.setRadius(Math.max(state.pos.acc || 0, 5));
-  if (mapState.mode === 'drive' && mapState.follow && state.driving) {
-    mapState.m.panTo(ll, { animate: !force, duration: 0.8, easeLinearity: 0.5 });
-  }
-}
-
-function setMapHeading(deg) {
-  if (!mapState.ready || !mapState.arrowEl) return;
-  const v = deg == null ? null : Math.round(deg);
-  if (v === mapState.lastHeading) return;
-  mapState.lastHeading = v;
-  if (v == null) {
-    mapState.meWrap.classList.remove('has-heading');
-  } else {
-    mapState.meWrap.classList.add('has-heading');
-    mapState.arrowEl.style.transform = 'rotate(' + v + 'deg)';
-  }
-}
-
-const LEVEL_COLOR = { closed: '#b00020', 3: '#ff3b30', 2: '#ff9500', 1: '#e6c200', 0: '#e6c200' };
-
-function incidentLines(geom) {
-  // GeoJSON [lon,lat] -> Leaflet [lat,lon]; LineString / MultiLineString / Point
-  if (!geom || !Array.isArray(geom.coordinates)) return [];
-  const flip = (c) => [c[1], c[0]];
-  if (geom.type === 'Point') return [[flip(geom.coordinates)]];
-  if (geom.type === 'MultiLineString') return geom.coordinates.map((l) => l.map(flip));
-  return [geom.coordinates.map(flip)];
-}
-
-function popupFor(p, dist, closed) {
-  const [label] = CATEGORY[p.iconCategory] || CATEGORY[0];
-  const box = document.createElement('div');
-  const b = document.createElement('b');
-  b.textContent = closed ? 'Kapalı yol' : label;
-  box.append(b);
-  let road = p.from && p.to ? p.from + ' → ' + p.to : (p.from || p.to || '');
-  if (Array.isArray(p.roadNumbers) && p.roadNumbers.length) road = p.roadNumbers.join(', ') + (road ? ' · ' + road : '');
-  if (road) { box.append(document.createElement('br'), document.createTextNode(road)); }
-  const meta = [(dist / 1000).toFixed(1) + ' km uzakta'];
-  if (p.delay > 0) meta.push(Math.round(p.delay / 60) + ' dk gecikme');
-  if (p.length > 0) meta.push(p.length >= 1000 ? (p.length / 1000).toFixed(1) + ' km' : Math.round(p.length) + ' m');
-  box.append(document.createElement('br'), document.createTextNode(meta.join(' · ')));
-  return box;
-}
-
-function drawTraffic(inc, lat, lon) {
-  if (!mapState.ready) return;
-  const g = mapState.traffic;
-  g.clearLayers();
-  L.circle([lat, lon], { radius: RADIUS_M, color: '#3ea6ff', weight: 2, dashArray: '6 8', fill: false, interactive: false }).addTo(g);
-
-  const info = $('map-info');
-  if (inc.status !== 'fulfilled') {
-    info.textContent = '';
-    if (state.trafficKey) setMapMsg('Olay ve kapalı yol verisi alınamadı.', true);
-    return;
-  }
-  if (mapState.flowErr < 3) setMapMsg('');
-
-  let closedCount = 0;
-  inc.value.forEach(({ p, dist, geom }) => {
-    const mag = p.magnitudeOfDelay || 0;
-    const closed = p.iconCategory === 8 || mag === 4;
-    if (closed) closedCount++;
-    const color = closed ? LEVEL_COLOR.closed : (LEVEL_COLOR[mag] || LEVEL_COLOR[1]);
-    const lines = incidentLines(geom);
-    let pinAt = null;
-
-    lines.forEach((pts) => {
-      if (!pts.length) return;
-      if (pts.length > 1) {
-        // beyaz kontur + renkli çizgi; kapalı yollar kesikli (renk körlüğü için)
-        L.polyline(pts, { color: '#ffffff', weight: closed ? 11 : 9, opacity: 0.9, interactive: false }).addTo(g);
-        L.polyline(pts, { color, weight: closed ? 7 : 5, opacity: 1, dashArray: closed ? '14 8' : null, lineCap: 'butt' })
-          .bindPopup(popupFor(p, dist, closed)).addTo(g);
-      }
-      if (!pinAt) pinAt = pts[Math.floor(pts.length / 2)];
-    });
-
-    // Kaza/kapalı yol/çalışma gibi olaylar için simge (trafik yoğunluğu çizgisi simgesiz)
-    if (pinAt && (closed || p.iconCategory !== 6)) {
-      const icon = closed ? '⛔' : (CATEGORY[p.iconCategory] || CATEGORY[0])[1];
-      L.marker(pinAt, { icon: L.divIcon({ className: '', html: '<div class="inc-pin">' + icon + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) })
-        .bindPopup(popupFor(p, dist, closed)).addTo(g);
-    }
-  });
-
-  info.textContent = closedCount + ' kapalı yol · ' + inc.value.length + ' olay';
-}
-
 /* ------------------------------ Başlangıç ------------------------------ */
 $('tt-key').value = storageGet('tt-key');
 $('btn-grant').addEventListener('click', requestPermissions);
@@ -781,11 +583,6 @@ $('btn-reset').addEventListener('click', () => {
   $('distance').textContent = '0.00';
 });
 document.querySelectorAll('.btn-refresh').forEach((b) => b.addEventListener('click', loadTraffic));
-$('btn-follow').addEventListener('click', () => {
-  mapState.follow = true;
-  $('btn-follow').hidden = true;
-  if (mapState.ready && state.pos) mapState.m.setView([state.pos.lat, state.pos.lon], Math.max(mapState.m.getZoom(), 15));
-});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && state.driving) acquireWakeLock();
 });
