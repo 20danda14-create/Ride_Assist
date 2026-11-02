@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0f14">
+<title>Sürüş Asistanı</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+
+  <!-- 1) İZİN EKRANI -->
+  <section id="screen-permission" class="screen">
+    <h1>Sürüş Asistanı</h1>
+    <p class="lead">Uygulamanın başlaması için şu izinler gerekir:</p>
+    <ul class="need">
+      <li><span>📍</span><div><b>Konum (GPS)</b><small>Anlık hız, gidilen mesafe, hava durumu ve trafik</small></div></li>
+      <li><span>🧭</span><div><b>Hareket ve yön sensörü</b><small>Pusula yönü (durağan haldeyken)</small></div></li>
+    </ul>
+
+    <label class="field">
+      <span>TomTom API anahtarı <em>(trafik için)</em></span>
+      <input id="tt-key" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="TomTom anahtarını yapıştır">
+    </label>
+    <p class="hint">Ücretsiz anahtar: developer.tomtom.com. Anahtar boş bırakılırsa trafik bölümü gösterilmez. Anahtar yalnızca bu telefonda saklanır.</p>
+
+    <button id="btn-grant" class="primary">İzinleri Ver ve Başlat</button>
+    <ul id="perm-list" class="perm-list"></ul>
+    <p id="perm-error" class="error" hidden></p>
+  </section>
+
+  <!-- 2) SÜRÜŞ ÖNCESİ -->
+  <section id="screen-prep" class="screen" hidden>
+    <h1>Sürüş Öncesi</h1>
+
+    <article class="card">
+      <h2>Hava Durumu <small id="weather-place"></small></h2>
+      <div id="weather-body"><p class="muted">Yükleniyor…</p></div>
+    </article>
+
+    <article class="card traffic-card" hidden>
+      <h2>Trafik (5 km çevre) <button class="mini btn-refresh" type="button">Yenile</button></h2>
+      <div class="traffic-body"><p class="muted">Yükleniyor…</p></div>
+    </article>
+
+    <p id="last-trip" class="muted center" hidden></p>
+    <button id="btn-start" class="primary big">Sürüşü Başlat</button>
+  </section>
+
+  <!-- 3) SÜRÜŞ EKRANI -->
+  <section id="screen-drive" class="screen" hidden>
+    <div class="status-bar">
+      <span id="gps-status">GPS: bekleniyor…</span>
+      <span id="heading-src"></span>
+    </div>
+
+    <div class="compass-wrap">
+      <svg viewBox="0 0 200 200" class="dial" aria-label="Pusula">
+        <circle cx="100" cy="100" r="92" class="dial-ring"/>
+        <g id="dial"></g>
+        <polygon points="100,2 90,22 110,22" class="dial-pointer"/>
+      </svg>
+      <div class="heading-text">
+        <div id="heading-card" class="heading-card">—</div>
+        <div id="heading-deg" class="heading-deg">—</div>
+        <div id="heading-name" class="muted"></div>
+      </div>
+    </div>
+
+    <div class="speed-block">
+      <div id="speed" class="speed">0</div>
+      <div class="unit">km/s</div>
+    </div>
+
+    <div class="distance-block">
+      <div><span id="distance" class="dist">0.00</span> <span class="unit">km</span></div>
+      <div class="muted">Gidilen mesafe</div>
+    </div>
+
+    <article class="card traffic-card" hidden>
+      <h2>Trafik (5 km çevre) <button class="mini btn-refresh" type="button">Yenile</button></h2>
+      <div class="traffic-body"><p class="muted">Yükleniyor…</p></div>
+    </article>
+
+    <div class="row">
+      <button id="btn-reset" class="secondary">Mesafeyi Sıfırla</button>
+      <button id="btn-stop" class="danger">Sürüşü Bitir</button>
+    </div>
+  </section>
+
+</main>
+<script src="app.js"></script>
+</body>
+</html>

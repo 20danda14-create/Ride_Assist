@@ -1,0 +1,102 @@
+:root {
+  --bg: #0b0f14;
+  --card: #151b23;
+  --line: #243040;
+  --text: #f2f5f8;
+  --muted: #8b98a8;
+  --accent: #3ea6ff;
+  --ok: #3ecf8e;
+  --warn: #ffb020;
+  --bad: #ff5468;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-user-select: none; user-select: none;
+}
+main { max-width: 520px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 26px; margin: 8px 0 12px; }
+h2 { font-size: 16px; margin: 0 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+h2 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+p { line-height: 1.45; }
+.lead { color: var(--muted); }
+.muted { color: var(--muted); font-size: 13px; }
+.center { text-align: center; }
+.error { color: var(--bad); }
+.ok { color: var(--ok); }
+.hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+.need { list-style: none; padding: 0; margin: 12px 0 18px; display: grid; gap: 10px; }
+.need li { display: flex; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.need li > span { font-size: 24px; }
+.need small { display: block; color: var(--muted); margin-top: 2px; }
+
+.field { display: block; margin: 8px 0; }
+.field span { display: block; font-size: 14px; margin-bottom: 6px; }
+.field em { color: var(--muted); font-style: normal; }
+.field input {
+  width: 100%; padding: 14px; font-size: 16px; color: var(--text);
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  -webkit-user-select: text; user-select: text;
+}
+
+button { font: inherit; border: 0; border-radius: 14px; padding: 14px 18px; color: var(--text); cursor: pointer; }
+button:disabled { opacity: .5; }
+.primary { width: 100%; background: var(--accent); color: #04121f; font-weight: 700; font-size: 17px; margin-top: 14px; }
+.primary.big { padding: 20px; font-size: 20px; margin-top: 18px; }
+.secondary { background: var(--card); border: 1px solid var(--line); flex: 1; }
+.danger { background: var(--bad); color: #fff; font-weight: 700; flex: 1; }
+.mini { background: var(--line); padding: 6px 12px; font-size: 12px; border-radius: 10px; }
+.row { display: flex; gap: 10px; margin: 16px 0 24px; }
+
+.perm-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; font-size: 14px; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px; margin: 12px 0; }
+
+/* Hava durumu */
+.wx-now { display: flex; align-items: center; gap: 14px; }
+.wx-icon { font-size: 52px; line-height: 1; }
+.wx-temp { font-size: 40px; font-weight: 700; }
+.wx-desc { color: var(--muted); }
+.wx-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 12px 0; font-size: 14px; }
+.wx-hours { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.wx-hour { min-width: 64px; text-align: center; background: #0f151c; border-radius: 12px; padding: 8px 6px; font-size: 13px; }
+.wx-hour .t { color: var(--muted); }
+.wx-hour .i { font-size: 22px; margin: 2px 0; }
+.wx-hour .p { color: var(--accent); font-size: 12px; }
+.warns { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.warns li { background: rgba(255,176,32,.12); border: 1px solid rgba(255,176,32,.4); color: var(--warn); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+
+/* Trafik */
+.flow { padding: 10px; border-radius: 12px; margin-bottom: 10px; font-size: 14px; background: #0f151c; }
+.flow b.f-ok { color: var(--ok); } .flow b.f-mid { color: var(--warn); } .flow b.f-bad { color: var(--bad); }
+.tlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tlist li { background: #0f151c; border-radius: 12px; padding: 10px; font-size: 14px; border-left: 4px solid var(--warn); }
+.tlist li.s3, .tlist li.s4 { border-left-color: var(--bad); }
+.tlist li.s1 { border-left-color: var(--ok); }
+.tlist .ttl { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.tlist .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--line); white-space: nowrap; align-self: flex-start; }
+.tlist .road { margin-top: 3px; }
+.tlist .meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+
+/* Sürüş ekranı */
+.status-bar { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; min-height: 16px; }
+.compass-wrap { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.dial { width: 46vw; max-width: 200px; flex: none; }
+.dial-ring { fill: #0f151c; stroke: var(--line); stroke-width: 2; }
+.dial-pointer { fill: var(--bad); }
+.dial text { fill: var(--text); font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+.dial text.n { fill: var(--bad); }
+.dial line { stroke: var(--muted); stroke-width: 2; }
+.heading-text { flex: 1; text-align: center; }
+.heading-card { font-size: 56px; font-weight: 800; line-height: 1; }
+.heading-deg { font-size: 26px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+.speed-block { text-align: center; margin: 6px 0; }
+.speed { font-size: 120px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.unit { color: var(--muted); font-size: 18px; }
+.distance-block { text-align: center; margin: 6px 0 4px; }
+.dist { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
