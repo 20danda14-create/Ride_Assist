@@ -86,10 +86,16 @@ function showScreen(id) {
 
 /* ------------------------------ İzinler ------------------------------ */
 function getPosition() {
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject,
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  const once = (opts) => new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, opts);
   });
+  // 1) Hızlı deneme (baz istasyonu/Wi-Fi, 5 dk'ya kadar eski konum kabul) → izin penceresini de burada tetikler
+  // 2) Olmazsa uzun süreli GPS denemesi. İzin reddedilmişse (kod 1) tekrar denemenin anlamı yok.
+  return once({ enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 })
+    .catch((e) => {
+      if (e && e.code === 1) throw e;
+      return once({ enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+    });
 }
 
 function onOrientation(e) {
@@ -150,16 +156,25 @@ async function requestPermissions() {
 
   // 2) Konum izni (zorunlu: hız, mesafe, hava, trafik buna bağlı)
   let first;
+  const waiting = el('li', null, '⏳ Konum aranıyor… (en fazla ~45 sn sürebilir)');
+  $('perm-list').append(waiting);
   try {
     first = await getPosition();
   } catch (e) {
-    if (e && e.code === 1) {
-      permFail('Konum izni verilmedi. Ayarlar › Gizlilik ve Güvenlik › Konum Servisleri › Safari Web Siteleri bölümünden "Uygulamayı Kullanırken" seçin, sayfayı yenileyip tekrar deneyin.');
+    waiting.remove();
+    const code = e && e.code;
+    if (code === 1) {
+      permFail('Konum izni verilmedi (kod 1). Ayarlar › Gizlilik ve Güvenlik › Konum Servisleri: açık olmalı. Aynı ekranda Safari Web Siteleri › "Uygulamayı Kullanırken" seçin ve "Kesin Konum" açık olsun. Sonra Safari\'yi tamamen kapatıp yeniden açın.');
+    } else if (code === 3) {
+      permFail('İzin var ama konum zamanında bulunamadı (kod 3). Telefonun gökyüzünü görmesi gerekir; garaj/kapalı alanda GPS bulamaz. Uçak modunun kapalı olduğunu kontrol edip tekrar deneyin.');
+    } else if (code === 2) {
+      permFail('İzin var ama konum belirlenemedi (kod 2). Konum Servisleri\'nin açık olduğunu ve uçak modunun kapalı olduğunu kontrol edip tekrar deneyin.');
     } else {
-      permFail('Konum alınamadı. Açık havada olduğunuzdan ve Konum Servisleri\'nin açık olduğundan emin olup tekrar deneyin.');
+      permFail('Konum alınamadı' + (e && e.message ? ' (' + e.message + ')' : '') + '. Tekrar deneyin.');
     }
     return;
   }
+  waiting.remove();
   state.pos = { lat: first.coords.latitude, lon: first.coords.longitude, acc: first.coords.accuracy };
   permLine('✅ Konum (GPS) çalışıyor');
 
