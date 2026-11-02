@@ -100,25 +100,3 @@ button:disabled { opacity: .5; }
 .unit { color: var(--muted); font-size: 18px; }
 .distance-block { text-align: center; margin: 6px 0 4px; }
 .dist { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
-
-/* Harita */
-.map-card { padding: 12px; }
-.map-info { color: var(--muted); font-weight: 400; font-size: 12px; }
-.map-box { position: relative; }
-#map { height: 340px; width: 100%; border-radius: 12px; background: #0f151c; z-index: 0; -webkit-user-select: none; user-select: none; }
-.map-follow {
-  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 500;
-  background: var(--accent); color: #04121f; font-weight: 700; font-size: 14px; padding: 10px 16px; border-radius: 99px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.4);
-}
-.legend { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 10px; font-size: 12px; color: var(--muted); }
-.lg { display: inline-block; width: 16px; height: 5px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
-.lg-closed { background: #b00020; } .lg-heavy { background: #ff3b30; } .lg-mid { background: #ff9500; } .lg-light { background: #e6c200; }
-
-.me-wrap { position: relative; width: 44px; height: 44px; }
-.me-dot { position: absolute; left: 12px; top: 12px; width: 20px; height: 20px; border-radius: 50%; background: #1e88ff; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(30,136,255,.3), 0 2px 6px rgba(0,0,0,.5); }
-.me-arrow { position: absolute; left: 0; top: 0; width: 44px; height: 44px; transform-origin: 50% 50%; display: none; }
-.me-arrow::before { content: ""; position: absolute; left: 14px; top: -6px; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 16px solid #1e88ff; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
-.me-wrap.has-heading .me-arrow { display: block; }
-.leaflet-popup-content { color: #111; font: 13px/1.4 -apple-system, Helvetica, Arial, sans-serif; -webkit-user-select: text; user-select: text; }
-.inc-pin { font-size: 22px; line-height: 1; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
