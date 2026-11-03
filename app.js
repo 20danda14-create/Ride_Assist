@@ -26,6 +26,9 @@ const state = {
   shownHeading: null,
   trafficKey: '',
   trafficTimer: null,
+  startedAt: 0,
+  statsTimer: null,
+  extraOpen: false,
   trafficBusy: false,
   wakeLock: null,
   statusTimer: null,
@@ -86,10 +89,16 @@ function showScreen(id) {
 
 /* ------------------------------ İzinler ------------------------------ */
 function getPosition() {
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject,
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  const once = (opts) => new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, opts);
   });
+  // 1) Hızlı deneme (baz istasyonu/Wi-Fi, 5 dk'ya kadar eski konum kabul) → izin penceresini de burada tetikler
+  // 2) Olmazsa uzun süreli GPS denemesi. İzin reddedilmişse (kod 1) tekrar denemenin anlamı yok.
+  return once({ enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 })
+    .catch((e) => {
+      if (e && e.code === 1) throw e;
+      return once({ enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+    });
 }
 
 function onOrientation(e) {
@@ -122,6 +131,53 @@ function permFail(msg) {
   $('btn-grant').disabled = false;
 }
 
+/* ---------------------------- Tanı paneli ---------------------------- */
+let lastGeoError = '';
+let diagMotion = 'henüz istenmedi';
+
+function browserKind() {
+  const ua = navigator.userAgent;
+  if (navigator.standalone) return { text: 'Ana ekrana eklenmiş uygulama (Safari değil)', bad: true };
+  if (/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua)) return { text: 'Safari dışı tarayıcı (Chrome/Firefox vb.)', bad: true };
+  if (/iPhone|iPad/.test(ua) && !/Safari\//.test(ua)) return { text: 'Başka bir uygulamanın içinde açılmış tarayıcı (Safari DEĞİL)', bad: true };
+  return { text: 'Safari', bad: false };
+}
+
+async function geoPermState() {
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const s = await navigator.permissions.query({ name: 'geolocation' });
+      return s.state;
+    }
+  } catch (e) { /* desteklenmiyor */ }
+  return 'okunamadı';
+}
+
+async function renderDiag() {
+  const box = $('diag');
+  const bk = browserKind();
+  const st = await geoPermState();
+  const lines = [];
+  lines.push('— Tanı bilgisi —');
+  lines.push('Tarayıcı: ' + bk.text);
+  lines.push('HTTPS: ' + (window.isSecureContext ? 'evet' : 'HAYIR'));
+  lines.push('İnternet: ' + (navigator.onLine ? 'var' : 'YOK'));
+  lines.push('Konum izni (bu site): ' + st);
+  lines.push('Hareket/yön izni: ' + diagMotion);
+  if (lastGeoError) lines.push('Son konum hatası: ' + lastGeoError);
+  lines.push('');
+  if (bk.bad) {
+    lines.push('ÇÖZÜM: Bu sayfa Safari\'de açılmalı. Adresi kopyalayıp Safari\'nin adres çubuğuna yapıştırın. Uygulama içi tarayıcılarda konum izni çalışmaz.');
+  } else if (st === 'denied') {
+    lines.push('ÇÖZÜM: Bu siteye konum izni kapalı. Safari\'de adres çubuğunun solundaki "aA" › Web Sitesi Ayarları › Konum › "İzin Ver" seçin; sonra sayfayı yenileyin.');
+  } else if (st === 'prompt') {
+    lines.push('Bu siteye henüz karar verilmemiş: butona basınca çıkan pencerede "İzin Ver" deyin.');
+  } else if (st === 'granted') {
+    lines.push('Bu siteye konum izni açık.');
+  }
+  box.textContent = lines.join('\n');
+}
+
 async function requestPermissions() {
   const btn = $('btn-grant');
   btn.disabled = true;
@@ -148,18 +204,32 @@ async function requestPermissions() {
     }
   }
 
+  diagMotion = (DOE && typeof DOE.requestPermission === 'function')
+    ? (motionGranted ? 'verildi' : 'reddedildi') : 'gerekmiyor';
+
   // 2) Konum izni (zorunlu: hız, mesafe, hava, trafik buna bağlı)
   let first;
+  const waiting = el('li', null, '⏳ Konum aranıyor… (en fazla ~45 sn sürebilir)');
+  $('perm-list').append(waiting);
   try {
     first = await getPosition();
   } catch (e) {
-    if (e && e.code === 1) {
-      permFail('Konum izni verilmedi. Ayarlar › Gizlilik ve Güvenlik › Konum Servisleri › Safari Web Siteleri bölümünden "Uygulamayı Kullanırken" seçin, sayfayı yenileyip tekrar deneyin.');
+    waiting.remove();
+    const code = e && e.code;
+    lastGeoError = 'kod ' + code + (e && e.message ? ' — ' + e.message : '');
+    renderDiag();
+    if (code === 1) {
+      permFail('Konum izni verilmedi (kod 1). Ayarlar › Gizlilik ve Güvenlik › Konum Servisleri: açık olmalı. Aynı ekranda Safari Web Siteleri › "Uygulamayı Kullanırken" seçin ve "Kesin Konum" açık olsun. Sonra Safari\'yi tamamen kapatıp yeniden açın.');
+    } else if (code === 3) {
+      permFail('İzin var ama konum zamanında bulunamadı (kod 3). Telefonun gökyüzünü görmesi gerekir; garaj/kapalı alanda GPS bulamaz. Uçak modunun kapalı olduğunu kontrol edip tekrar deneyin.');
+    } else if (code === 2) {
+      permFail('İzin var ama konum belirlenemedi (kod 2). Konum Servisleri\'nin açık olduğunu ve uçak modunun kapalı olduğunu kontrol edip tekrar deneyin.');
     } else {
-      permFail('Konum alınamadı. Açık havada olduğunuzdan ve Konum Servisleri\'nin açık olduğundan emin olup tekrar deneyin.');
+      permFail('Konum alınamadı' + (e && e.message ? ' (' + e.message + ')' : '') + '. Tekrar deneyin.');
     }
     return;
   }
+  waiting.remove();
   state.pos = { lat: first.coords.latitude, lon: first.coords.longitude, acc: first.coords.accuracy };
   permLine('✅ Konum (GPS) çalışıyor');
 
@@ -314,7 +384,7 @@ async function fetchIncidents(lat, lon) {
   (data.incidents || []).forEach((inc) => {
     const p = inc.properties || {};
     const dist = minDistanceToGeometry(lat, lon, inc.geometry);
-    if (dist <= RADIUS_M) items.push({ p, dist });
+    if (dist <= RADIUS_M) items.push({ p, dist, geom: inc.geometry });
   });
   items.sort((a, b) => {
     const ja = a.p.iconCategory === 6 ? 0 : 1, jb = b.p.iconCategory === 6 ? 0 : 1;
@@ -344,6 +414,7 @@ async function loadTraffic() {
   const [inc, flow] = await Promise.allSettled([fetchIncidents(lat, lon), fetchFlow(lat, lon)]);
   state.trafficBusy = false;
   renderTraffic(inc, flow);
+  drawTraffic(inc, lat, lon);
 }
 
 function renderTraffic(inc, flow) {
@@ -415,6 +486,7 @@ function setupTrafficCards() {
 /* ------------------------- Sürüş öncesi ekran ------------------------- */
 function enterPrep() {
   showScreen('screen-prep');
+  placeMap('map-slot-prep', 'prep');
   setupTrafficCards();
   loadWeather();
   loadTraffic();
@@ -456,6 +528,8 @@ function onPosition(p) {
 
   $('speed').textContent = String(Math.round(state.speedMs * 3.6));
   $('distance').textContent = (state.distanceM / 1000).toFixed(2);
+  updateStats();
+  updateMapPosition();
 }
 
 function onPositionError(err) {
@@ -482,7 +556,9 @@ function frame() {
     $('heading-deg').textContent = Math.round(deg) % 360 + '°';
     $('heading-name').textContent = name8(deg);
     $('heading-src').textContent = h.src;
+    setMapHeading(deg);
   } else {
+    setMapHeading(null);
     $('heading-card').textContent = '—';
     $('heading-deg').textContent = '—';
     $('heading-name').textContent = 'Hareket edince GPS yönü gösterilir';
@@ -506,6 +582,44 @@ async function acquireWakeLock() {
   } catch (e) { /* ekran kilidi engellenemedi; sessizce geç */ }
 }
 
+/* Süre ve ortalama hız: ortalama = gidilen mesafe / toplam geçen süre (duraklamalar dahil) */
+function computeStats() {
+  const sec = state.startedAt ? Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000)) : 0;
+  const avg = sec >= 5 ? (state.distanceM / 1000) / (sec / 3600) : 0;
+  return { sec, avg };
+}
+
+function fmtDuration(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const p = (n) => String(n).padStart(2, '0');
+  return h > 0 ? h + ':' + p(m) + ':' + p(s) : p(m) + ':' + p(s);
+}
+
+function updateStats() {
+  const { sec, avg } = computeStats();
+  $('elapsed').textContent = fmtDuration(sec);
+  $('avg').textContent = String(Math.round(avg));
+}
+
+// Trafik ve harita sürüş ekranında varsayılan olarak gizli; isteyen açar.
+// Gizliyken trafik sorgusu da yapılmaz (ücretsiz istek hakkı korunur).
+function setExtra(open) {
+  state.extraOpen = open;
+  $('drive-extra').hidden = !open;
+  $('btn-extra').textContent = open ? 'Trafik ve haritayı gizle' : 'Trafik ve haritayı göster';
+  clearInterval(state.trafficTimer);
+  state.trafficTimer = null;
+  if (open) {
+    placeMap('map-slot-drive', 'drive');
+    loadTraffic();
+    state.trafficTimer = setInterval(loadTraffic, TRAFFIC_REFRESH_MS);
+  } else {
+    mapState.mode = 'prep';
+  }
+}
+
 function startDrive() {
   state.driving = true;
   state.distanceM = 0;
@@ -514,21 +628,22 @@ function startDrive() {
   state.speedMs = 0;
   state.shownHeading = null;
   state.lastFixAt = 0;
+  state.startedAt = Date.now();
   $('speed').textContent = '0';
   $('distance').textContent = '0.00';
+  updateStats();
 
   showScreen('screen-drive');
   setupTrafficCards();
   buildDial();
+  setExtra(false);
 
   state.watchId = navigator.geolocation.watchPosition(onPosition, onPositionError,
     { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
   state.statusTimer = setInterval(updateGpsStatus, 1000);
+  state.statsTimer = setInterval(updateStats, 1000);
   acquireWakeLock();
   requestAnimationFrame(frame);
-
-  loadTraffic();
-  state.trafficTimer = setInterval(loadTraffic, TRAFFIC_REFRESH_MS);
 }
 
 function stopDrive() {
@@ -537,14 +652,19 @@ function stopDrive() {
   state.watchId = null;
   clearInterval(state.trafficTimer);
   clearInterval(state.statusTimer);
+  clearInterval(state.statsTimer);
+  state.extraOpen = false;
+  mapState.mode = 'prep';
   if (state.wakeLock) { try { state.wakeLock.release(); } catch (e) { /* yoksay */ } state.wakeLock = null; }
 
   const km = (state.distanceM / 1000).toFixed(2);
+  const st = computeStats();
   const lt = $('last-trip');
-  lt.textContent = `Son sürüş: ${km} km`;
+  lt.textContent = `Son sürüş: ${km} km · ${fmtDuration(st.sec)} · ort. ${Math.round(st.avg)} km/s`;
   lt.hidden = false;
 
   showScreen('screen-prep');
+  placeMap('map-slot-prep', 'prep');
   setupTrafficCards();
   loadWeather();
   loadTraffic();
@@ -572,17 +692,219 @@ function buildDial() {
   });
 }
 
+/* ------------------------------ Harita (Leaflet) ------------------------------ */
+// Altlık: CARTO Voyager / Dark (OpenStreetMap verisi, ücretsiz). Trafik akışı: TomTom raster katmanı.
+const mapState = {
+  m: null, ready: false, me: null, accCircle: null, arrowEl: null,
+  traffic: null, follow: true, mode: 'prep', lastHeading: undefined,
+  flowOk: 0, flowErr: 0,
+};
+
+function setMapMsg(text, isError) {
+  const e = $('map-msg');
+  if (!text) { e.hidden = true; e.textContent = ''; return; }
+  e.textContent = text;
+  e.className = isError ? 'error' : 'muted';
+  e.hidden = false;
+}
+
+function ensureMap() {
+  if (mapState.ready) return true;
+  if (typeof L === 'undefined') {
+    setMapMsg('Harita kütüphanesi yüklenemedi (internet bağlantısını kontrol edin).', true);
+    return false;
+  }
+  const { lat, lon } = state.pos;
+  const m = L.map('map', { zoomControl: true, tap: true }).setView([lat, lon], 14);
+
+  const attrib = '&copy; OpenStreetMap &copy; CARTO';
+  const light = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    { subdomains: 'abcd', maxZoom: 19, attribution: attrib });
+  const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { subdomains: 'abcd', maxZoom: 19, attribution: attrib });
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  (prefersDark ? dark : light).addTo(m);
+
+  mapState.traffic = L.layerGroup().addTo(m);
+  const overlays = { 'Kapalı yol ve olaylar': mapState.traffic };
+
+  if (state.trafficKey) {
+    const flow = L.tileLayer(
+      'https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=' + encodeURIComponent(state.trafficKey),
+      { maxZoom: 19, opacity: 0.9, attribution: '&copy; TomTom' });
+    flow.on('tileload', () => { mapState.flowOk++; });
+    flow.on('tileerror', () => {
+      mapState.flowErr++;
+      if (mapState.flowOk === 0 && mapState.flowErr >= 3) {
+        setMapMsg('TomTom trafik akış katmanı yüklenemedi (anahtar veya günlük limit).', true);
+      }
+    });
+    flow.addTo(m);
+    overlays['Trafik akışı (TomTom)'] = flow;
+  }
+
+  L.control.layers({ 'Açık harita': light, 'Koyu harita': dark }, overlays, { collapsed: true, position: 'topright' }).addTo(m);
+  L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(m);
+
+  // Konum işareti (yön oku + doğruluk dairesi)
+  mapState.accCircle = L.circle([lat, lon], { radius: state.pos.acc || 20, weight: 1, color: '#1e88ff', fillColor: '#1e88ff', fillOpacity: 0.12, interactive: false }).addTo(m);
+  mapState.me = L.marker([lat, lon], {
+    icon: L.divIcon({ className: '', html: '<div class="me-wrap"><div class="me-arrow"></div><div class="me-dot"></div></div>', iconSize: [44, 44], iconAnchor: [22, 22] }),
+    zIndexOffset: 1000, interactive: false, keyboard: false,
+  }).addTo(m);
+  mapState.arrowEl = mapState.me.getElement().querySelector('.me-arrow');
+  mapState.meWrap = mapState.me.getElement().querySelector('.me-wrap');
+
+  // Kullanıcı haritayı kaydırırsa otomatik takibi durdur
+  m.on('dragstart', () => {
+    if (mapState.mode === 'drive') { mapState.follow = false; $('btn-follow').hidden = false; }
+  });
+
+  mapState.m = m;
+  mapState.ready = true;
+  return true;
+}
+
+function placeMap(slotId, mode) {
+  mapState.mode = mode;
+  const card = $('map-card');
+  $(slotId).append(card);
+  card.hidden = false;
+  let mapOk = false;
+  try { mapOk = ensureMap(); } catch (e) { setMapMsg('Harita açılamadı: ' + ((e && e.message) || e), true); }
+  if (!mapOk) return;
+
+  mapState.follow = true;
+  $('btn-follow').hidden = true;
+  if (!state.trafficKey) setMapMsg('Kapalı yol ve trafik katmanı için TomTom anahtarı gerekir. Konumunuz haritada canlı gösterilir.', false);
+  else if (mapState.flowErr < 3) setMapMsg('');
+
+  const m = mapState.m;
+  setTimeout(() => {
+    m.invalidateSize();
+    const ll = L.latLng(state.pos.lat, state.pos.lon);
+    if (mode === 'drive') m.setView(ll, 16);
+    else m.fitBounds(ll.toBounds(RADIUS_M * 2.2));
+    updateMapPosition(true);
+  }, 60);
+}
+
+function updateMapPosition(force) {
+  if (!mapState.ready || !state.pos) return;
+  const ll = L.latLng(state.pos.lat, state.pos.lon);
+  mapState.me.setLatLng(ll);
+  mapState.accCircle.setLatLng(ll);
+  mapState.accCircle.setRadius(Math.max(state.pos.acc || 0, 5));
+  if (mapState.mode === 'drive' && mapState.follow && state.driving) {
+    mapState.m.panTo(ll, { animate: !force, duration: 0.8, easeLinearity: 0.5 });
+  }
+}
+
+function setMapHeading(deg) {
+  if (!mapState.ready || !mapState.arrowEl) return;
+  const v = deg == null ? null : Math.round(deg);
+  if (v === mapState.lastHeading) return;
+  mapState.lastHeading = v;
+  if (v == null) {
+    mapState.meWrap.classList.remove('has-heading');
+  } else {
+    mapState.meWrap.classList.add('has-heading');
+    mapState.arrowEl.style.transform = 'rotate(' + v + 'deg)';
+  }
+}
+
+const LEVEL_COLOR = { closed: '#b00020', 3: '#ff3b30', 2: '#ff9500', 1: '#e6c200', 0: '#e6c200' };
+
+function incidentLines(geom) {
+  // GeoJSON [lon,lat] -> Leaflet [lat,lon]; LineString / MultiLineString / Point
+  if (!geom || !Array.isArray(geom.coordinates)) return [];
+  const flip = (c) => [c[1], c[0]];
+  if (geom.type === 'Point') return [[flip(geom.coordinates)]];
+  if (geom.type === 'MultiLineString') return geom.coordinates.map((l) => l.map(flip));
+  return [geom.coordinates.map(flip)];
+}
+
+function popupFor(p, dist, closed) {
+  const [label] = CATEGORY[p.iconCategory] || CATEGORY[0];
+  const box = document.createElement('div');
+  const b = document.createElement('b');
+  b.textContent = closed ? 'Kapalı yol' : label;
+  box.append(b);
+  let road = p.from && p.to ? p.from + ' → ' + p.to : (p.from || p.to || '');
+  if (Array.isArray(p.roadNumbers) && p.roadNumbers.length) road = p.roadNumbers.join(', ') + (road ? ' · ' + road : '');
+  if (road) { box.append(document.createElement('br'), document.createTextNode(road)); }
+  const meta = [(dist / 1000).toFixed(1) + ' km uzakta'];
+  if (p.delay > 0) meta.push(Math.round(p.delay / 60) + ' dk gecikme');
+  if (p.length > 0) meta.push(p.length >= 1000 ? (p.length / 1000).toFixed(1) + ' km' : Math.round(p.length) + ' m');
+  box.append(document.createElement('br'), document.createTextNode(meta.join(' · ')));
+  return box;
+}
+
+function drawTraffic(inc, lat, lon) {
+  if (!mapState.ready) return;
+  const g = mapState.traffic;
+  g.clearLayers();
+  L.circle([lat, lon], { radius: RADIUS_M, color: '#3ea6ff', weight: 2, dashArray: '6 8', fill: false, interactive: false }).addTo(g);
+
+  const info = $('map-info');
+  if (inc.status !== 'fulfilled') {
+    info.textContent = '';
+    if (state.trafficKey) setMapMsg('Olay ve kapalı yol verisi alınamadı.', true);
+    return;
+  }
+  if (mapState.flowErr < 3) setMapMsg('');
+
+  let closedCount = 0;
+  inc.value.forEach(({ p, dist, geom }) => {
+    const mag = p.magnitudeOfDelay || 0;
+    const closed = p.iconCategory === 8 || mag === 4;
+    if (closed) closedCount++;
+    const color = closed ? LEVEL_COLOR.closed : (LEVEL_COLOR[mag] || LEVEL_COLOR[1]);
+    const lines = incidentLines(geom);
+    let pinAt = null;
+
+    lines.forEach((pts) => {
+      if (!pts.length) return;
+      if (pts.length > 1) {
+        // beyaz kontur + renkli çizgi; kapalı yollar kesikli (renk körlüğü için)
+        L.polyline(pts, { color: '#ffffff', weight: closed ? 11 : 9, opacity: 0.9, interactive: false }).addTo(g);
+        L.polyline(pts, { color, weight: closed ? 7 : 5, opacity: 1, dashArray: closed ? '14 8' : null, lineCap: 'butt' })
+          .bindPopup(popupFor(p, dist, closed)).addTo(g);
+      }
+      if (!pinAt) pinAt = pts[Math.floor(pts.length / 2)];
+    });
+
+    // Kaza/kapalı yol/çalışma gibi olaylar için simge (trafik yoğunluğu çizgisi simgesiz)
+    if (pinAt && (closed || p.iconCategory !== 6)) {
+      const icon = closed ? '⛔' : (CATEGORY[p.iconCategory] || CATEGORY[0])[1];
+      L.marker(pinAt, { icon: L.divIcon({ className: '', html: '<div class="inc-pin">' + icon + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) })
+        .bindPopup(popupFor(p, dist, closed)).addTo(g);
+    }
+  });
+
+  info.textContent = closedCount + ' kapalı yol · ' + inc.value.length + ' olay';
+}
+
 /* ------------------------------ Başlangıç ------------------------------ */
 $('tt-key').value = storageGet('tt-key');
+renderDiag();
 $('btn-grant').addEventListener('click', requestPermissions);
 $('btn-start').addEventListener('click', startDrive);
 $('btn-stop').addEventListener('click', stopDrive);
 $('btn-reset').addEventListener('click', () => {
   state.distanceM = 0;
   state.lastPoint = null;
+  state.startedAt = Date.now();
   $('distance').textContent = '0.00';
+  updateStats();
 });
+$('btn-extra').addEventListener('click', () => setExtra(!state.extraOpen));
 document.querySelectorAll('.btn-refresh').forEach((b) => b.addEventListener('click', loadTraffic));
+$('btn-follow').addEventListener('click', () => {
+  mapState.follow = true;
+  $('btn-follow').hidden = true;
+  if (mapState.ready && state.pos) mapState.m.setView([state.pos.lat, state.pos.lon], Math.max(mapState.m.getZoom(), 15));
+});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && state.driving) acquireWakeLock();
 });
